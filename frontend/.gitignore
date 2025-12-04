@@ -1,0 +1,32 @@
+# -----------------------------
+# React + Vite frontend
+# -----------------------------
+
+# Node modules
+node_modules/
+
+# Build output
+dist/
+
+# Local environment variables for Vite
+.env
+.env.*
+!.env.example
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Vite cache (optional)
+.vite/

@@ -1,0 +1,116 @@
+{
+    "project_title": "CSIRO Image2Biomass Prediction",
+    "seed": 42,
+    "image_size_h": 224,
+    "image_size_w": 448,
+    "n_folds": 5,
+    "batch_size": 8,
+    "raw_csv": "../../csiro-biomass/train.csv",
+    "image_root": "../../csiro-biomass",
+    "artifacts_dir": "./artifacts",
+    "figs_dir": "./figs",
+    "use_log1p": false,
+    "epochs": 10,
+    "label_transform": "identity",
+    "train_target_cols": [
+        "Dry_Green_g",
+        "Dry_Dead_g",
+        "Dry_Clover_g",
+        "GDM_g",
+        "Dry_Total_g"
+    ],
+    "all_targets_raw": [
+        "Dry_Green_g",
+        "Dry_Dead_g",
+        "Dry_Clover_g",
+        "GDM_g",
+        "Dry_Total_g"
+    ],
+    "core_targets": [
+        "Dry_Green_g",
+        "Dry_Dead_g",
+        "Dry_Clover_g"
+    ],
+    "metadata_features": [
+        "Pre_GSHH_NDVI",
+        "Height_Ave_cm",
+        "State_encoded",
+        "Species_encoded",
+        "year",
+        "month_sin",
+        "month_cos",
+        "day_of_year_sin",
+        "day_of_year_cos"
+    ],
+    "metadata_categorical": [
+        "State_encoded",
+        "Species_encoded"
+    ],
+    "metadata_continuous": [
+        "Pre_GSHH_NDVI",
+        "Height_Ave_cm",
+        "year",
+        "month_sin",
+        "month_cos",
+        "day_of_year_sin",
+        "day_of_year_cos"
+    ],
+    "meta_stats": {
+        "Pre_GSHH_NDVI": {
+            "mean": 0.6574229691876751,
+            "std": 0.1521422782849033
+        },
+        "Height_Ave_cm": {
+            "mean": 7.595985434173669,
+            "std": 10.285262364329936
+        },
+        "year": {
+            "mean": 2015.0,
+            "std": 1.0
+        },
+        "month_sin": {
+            "mean": -0.2919126412355799,
+            "std": 0.6400249348408314
+        },
+        "month_cos": {
+            "mean": -0.21040542495727946,
+            "std": 0.6806834220642672
+        },
+        "day_of_year_sin": {
+            "mean": -0.2192218852635548,
+            "std": 0.6707198809798007
+        },
+        "day_of_year_cos": {
+            "mean": -0.30936140111786986,
+            "std": 0.6393569352882097
+        }
+    },
+    "n_samples": 357,
+    "n_unique_images": 357,
+    "n_metadata_features": 9,
+    "n_categorical_meta": 2,
+    "n_continuous_meta": 7,
+    "State_map": {
+        "0": "NSW",
+        "1": "Tas",
+        "2": "Vic",
+        "3": "WA"
+    },
+    "Species_map": {
+        "0": "Clover",
+        "1": "Fescue",
+        "2": "Fescue_CrumbWeed",
+        "3": "Lucerne",
+        "4": "Mixed",
+        "5": "Phalaris",
+        "6": "Phalaris_BarleyGrass_SilverGrass_SpearGrass_Clover_Capeweed",
+        "7": "Phalaris_Clover",
+        "8": "Phalaris_Clover_Ryegrass_Barleygrass_Bromegrass",
+        "9": "Phalaris_Ryegrass_Clover",
+        "10": "Ryegrass",
+        "11": "Ryegrass_Clover",
+        "12": "SubcloverDalkeith",
+        "13": "SubcloverLosa",
+        "14": "WhiteClover"
+    }
+}

@@ -1,1 +1,12 @@
+# Root ignores
+.env
+.env.*
+!.env.example
+
+# OS junk
 .DS_Store
+Thumbs.db
+
+# Python cache if your training notebook lives here
+__pycache__/
+*.pyc

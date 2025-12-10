@@ -1,0 +1,30 @@
+version: "3.9"
+
+services:
+  backend:
+    build: ./backend
+    container_name: biomass_backend
+    environment:
+      NODE_ENV: production
+      PORT: 8000
+      MONGO_URI: ${MONGO_URI}
+      JWT_SECRET: ${JWT_SECRET}
+      MODEL_PATH: "/app/model/model.json"
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      PREPROCESS_MODE: ${PREPROCESS_MODE}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./model/tfjs:/app/model:ro
+
+  frontend:
+    build: ./frontend
+    container_name: biomass_frontend
+    environment:
+      # for build-time Vite env you'd typically bake this during build,
+      # but we keep it simple for now
+      VITE_API_URL: "http://localhost:8000"
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend

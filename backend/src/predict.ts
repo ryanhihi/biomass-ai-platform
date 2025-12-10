@@ -1,129 +1,161 @@
-// import { Router } from "express";
-// import multer from "multer";
-// import * as tf from "@tensorflow/tfjs";
-// import mongoose from "mongoose";
-// import jwt from "jsonwebtoken";
-// import { getGridFS } from "./db.js";
+import { Router } from "express";
+import multer from "multer";
+import * as tf from "@tensorflow/tfjs-node";
+import mongoose from "mongoose";
+import jwt from "jsonwebtoken";
+import { getGridFS } from "./db.js";
 
-// const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ storage: multer.memoryStorage() });
 
-// let model: tf.LayersModel;
+export const TARGETS = [
+  "Dry Clover (g)",
+  "Dry Dead (g)",
+  "Dry Green (g)",
+  "Dry Total (g)",
+  "Wet Total (g)",
+] as const;
 
-// export async function loadModel(modelPath: string) {
-//   model = await tf.loadLayersModel("file://" + modelPath);
-// }
+type Target = typeof TARGETS[number];
 
-// const Prediction = mongoose.model("Prediction", new mongoose.Schema({
-//   userId: { type: mongoose.Schema.Types.ObjectId, required: false },
-//   ts: { type: Date, default: Date.now },
-//   meta: {
-//     ndvi: Number, height: Number, state_id: Number, species_id: Number
-//   },
-//   outputs: Object,
-//   imageFileId: mongoose.Schema.Types.ObjectId
-// }));
+let model: tf.LayersModel;
 
-// function efPreprocess(img224: tf.Tensor3D) {
-//   return tf.tidy(() => img224.toFloat().div(127.5).sub(1));
-// }
+export async function loadModel(modelPath: string) {
+  if (!modelPath) throw new Error("MODEL_PATH missing");
+  model = await tf.loadLayersModel("file://" + modelPath);
+  console.log("Model loaded sucessfully:", modelPath);
+}
 
-// async function to224RGB(buf: Buffer) {
-//   const img = tf.node.decodeImage(buf, 3) as tf.Tensor3D;
-//   const resized = tf.image.resizeBilinear(img, [224, 224]);
-//   const pre = efPreprocess(resized);
-//   return pre.expandDims(0);
-// }
+const Prediction = mongoose.model(
+  "Prediction",
+  new mongoose.Schema(
+    {
+      userId: { type: mongoose.Schema.Types.ObjectId, required: false },
+      ts: { type: Date, default: Date.now },
+      outputs: { type: Object, required: true },
+      recommend: { type: Boolean, default: false },
+      imageFileId: { type: mongoose.Schema.Types.ObjectId, required: true },
+      originalName: String,
+      mimeType: String,
+    },
+    { collection: "predictions" }
+  )
+);
 
-// export const predict = Router();
+/**
+ * If Keras model already contains preprocessing inside the graph,
+ * set PREPROCESS_MODE=none
+ *
+ * If model expects EfficientNet preprocessed input,
+ * set PREPROCESS_MODE=efficientnet
+ */
+function preprocessIfNeeded(img: tf.Tensor3D) {
+  const mode = (process.env.PREPROCESS_MODE || "efficientnet").toLowerCase();
+  if (mode === "none") return img.toFloat();
 
-// predict.post("/predict", upload.single("file"), async (req, res) => {
-//   try {
-//     const { ndvi, height, state_id, species_id } = req.body;
+  // EfficientNet preprocess, scale to [-1, 1]
+  return img.toFloat().div(127.5).sub(1);
+}
 
-//     if (!req.file) {
-//       return res.status(400).json({ ok: false, error: "image missing" });
-//     }
+function getModelSize() {
+  const shape = model.inputs?.[0]?.shape;
+  // expected [null, H, W, C]
+  const h = (shape?.[1] as number) || 224;
+  const w = (shape?.[2] as number) || 224;
+  const c = (shape?.[3] as number) || 3;
+  return { h, w, c };
+}
 
-//     // ---- tensors ----
-//     const xImg = await to224RGB(req.file.buffer);
-//     const xNdvi = tf.tensor2d([[Number(ndvi)]]);
-//     const xHeight = tf.tensor2d([[Number(height)]]);
-//     const xState = tf.tensor1d([Number(state_id)], "int32");
-//     const xSpecies = tf.tensor1d([Number(species_id)], "int32");
+async function bufferToInputTensor(buf: Buffer) {
+  const { h, w } = getModelSize();
 
-//     const pred = model.predict([xImg, xNdvi, xHeight, xState, xSpecies]) as tf.Tensor;
-//     const y = Array.from(await pred.data()) as number[];
+  const decoded = tf.node.decodeImage(buf, 3) as tf.Tensor3D; // force RGB
+  const resized = tf.image.resizeBilinear(decoded, [h, w]);
+  const pre = preprocessIfNeeded(resized);
+  const batched = pre.expandDims(0); // (1,H,W,3)
 
-//     // safety check for TS + runtime
-//     if (y.length < 5) {
-//       throw new Error(`Model output too short: expected 5, got ${y.length}`);
-//     }
+  decoded.dispose();
+  resized.dispose();
 
-//     // cleanup
-//     xImg.dispose(); xNdvi.dispose(); xHeight.dispose(); xState.dispose(); xSpecies.dispose(); pred.dispose();
+  return batched;
+}
 
-//     // ---- outputs (force numbers) ----
-//     const outputs: Record<string, number> = {
-//       "Dry Clover (g)": y[0] ?? 0,
-//       "Dry Dead (g)":   y[1] ?? 0,
-//       "Dry Green (g)":  y[2] ?? 0,
-//       "Dry Total (g)":  y[3] ?? 0,
-//       "Wet Total (g)":  y[4] ?? 0,
-//     };
+function buildOutputs(y: number[]): Record<Target, number> {
+  const entries = TARGETS.map((label, i) => [label, y[i] ?? 0] as const);
+  return Object.fromEntries(entries) as Record<Target, number>;
+}
 
-//     // now TS knows these are numbers
-//     const dryTotal = outputs["Dry Total (g)"] ?? 0;
-//     const dryDead  = outputs["Dry Dead (g)"] ?? 0;
-//     const recommend = dryTotal >= 40 && dryDead <= 15;
+/**
+ * can adjust thresholds later in UI/admin settings.
+ */
+function deriveRecommend(outputs: Record<Target, number>) {
+  const dryTotal = outputs["Dry Total (g)"] ?? 0;
+  const dryDead  = outputs["Dry Dead (g)"] ?? 0;
 
+  // Example rule (tune for use case)
+  return dryTotal >= 40 && dryDead <= 15;
+}
 
-//     // ---- store image ----
-//     const bucket = getGridFS();
-//     const uploadStream = bucket.openUploadStream(req.file.originalname, {
-//       metadata: { contentType: req.file.mimetype }
-//     });
-//     uploadStream.end(req.file.buffer);
-//     const imageFileId = uploadStream.id as mongoose.Types.ObjectId;
+export const predict = Router();
 
-//     // ---- optional userId from JWT ----
-//     let userId: mongoose.Types.ObjectId | undefined;
-//     const authHeader = req.headers.authorization;
+predict.post("/predict", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ ok: false, error: "image missing" });
+    }
 
-//     if (authHeader?.startsWith("Bearer ")) {
-//       const authToken = authHeader.split(" ")[1];
-//       if (authToken) {
-//         const decoded: any = jwt.verify(authToken, process.env.JWT_SECRET!);
-//         userId = new mongoose.Types.ObjectId(decoded.uid);
-//       }
-//     }
+    // 1) tensor
+    const xImg = await bufferToInputTensor(req.file.buffer);
 
-//     // ---- do NOT include userId if undefined ----
-//     const createPayload: any = {
-//       meta: {
-//         ndvi: Number(ndvi),
-//         height: Number(height),
-//         state_id: Number(state_id),
-//         species_id: Number(species_id)
-//       },
-//       outputs: {
-//         Dry_Clover_g: outputs["Dry Clover (g)"],
-//         Dry_Dead_g:   outputs["Dry Dead (g)"],
-//         Dry_Green_g:  outputs["Dry Green (g)"],
-//         Dry_Total_g:  outputs["Dry Total (g)"],
-//         GDM_g:        outputs["Wet Total (g)"],
-//         recommend
-//       },
-//       imageFileId
-//     };
+    // 2) predict
+    const pred = model.predict(xImg) as tf.Tensor;
+    const y = Array.from(await pred.data()) as number[];
 
-//     if (userId) createPayload.userId = userId;
+    xImg.dispose();
+    pred.dispose();
 
-//     await Prediction.create(createPayload);
+    if (y.length < 5) {
+      throw new Error(`Model output too short: expected 5, got ${y.length}`);
+    }
 
-//     return res.json({ ok: true, outputs, recommend });
+    const outputs = buildOutputs(y);
+    const recommend = deriveRecommend(outputs);
 
-//   } catch (e: any) {
-//     console.error(e);
-//     return res.status(500).json({ ok: false, error: e.message });
-//   }
-// });
+    // 3) store image in GridFS
+    const bucket = getGridFS();
+    const uploadStream = bucket.openUploadStream(req.file.originalname, {
+      metadata: { contentType: req.file.mimetype },
+    });
+    uploadStream.end(req.file.buffer);
+    const imageFileId = uploadStream.id as mongoose.Types.ObjectId;
+
+    // 4) userId from JWT
+    let userId: mongoose.Types.ObjectId | undefined;
+    const authHeader = req.headers.authorization;
+
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.split(" ")[1];
+      if (token) {
+        const decoded: any = jwt.verify(token, process.env.JWT_SECRET!);
+        userId = new mongoose.Types.ObjectId(decoded.uid);
+      }
+    }
+
+    // 5) save prediction doc
+    const payload: any = {
+      outputs,
+      recommend,
+      imageFileId,
+      originalName: req.file.originalname,
+      mimeType: req.file.mimetype,
+    };
+    if (userId) payload.userId = userId;
+
+    await Prediction.create(payload);
+
+    return res.json({ ok: true, outputs, recommend, imageFileId });
+
+  } catch (e: any) {
+    console.error(e);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});

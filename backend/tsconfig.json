@@ -9,7 +9,7 @@
     // See also https://aka.ms/tsconfig/module
     "module": "nodenext",
     "target": "ES2020",
-    "types": [],
+    "types": ["node"],
     "moduleResolution": "NodeNext",
     "rootDir": "src",
     "outDir": "dist",
@@ -45,5 +45,6 @@
     "noUncheckedSideEffectImports": true,
     "moduleDetection": "force",
     "skipLibCheck": true,
-  }
+  },
+  "include": ["src"]
 }

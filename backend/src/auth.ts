@@ -3,10 +3,15 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 
-const User = mongoose.model("User", new mongoose.Schema({
-  email: { type: String, unique: true },
-  hash: String,
-}, { timestamps: true }));
+const UserSchema = new mongoose.Schema(
+  {
+    email: { type: String, unique: true, required: true },
+    hash: { type: String, required: true },
+  },
+  { timestamps: true, collection: "users" }
+);
+
+const User = mongoose.models.User || mongoose.model("User", UserSchema);
 
 export const auth = Router();
 
@@ -21,9 +26,9 @@ auth.post("/register", async (req, res) => {
 
   try {
     const doc = await User.create({ email, hash });
-    res.json({ ok: true, id: doc._id });
+    return res.json({ ok: true, id: doc._id });
   } catch (e: any) {
-    res.status(400).json({ ok: false, error: e.message });
+    return res.status(400).json({ ok: false, error: e.message });
   }
 });
 
@@ -35,20 +40,16 @@ auth.post("/login", async (req, res) => {
   }
 
   const user = await User.findOne({ email });
-  if (!user || !user.hash) {
-    return res.status(401).json({ ok: false, error: "Invalid" });
-  }
+  if (!user) return res.status(401).json({ ok: false, error: "Invalid" });
 
-  const ok = await bcrypt.compare(password, user.hash as string);
-  if (!ok) {
-    return res.status(401).json({ ok: false, error: "Invalid" });
-  }
+  const ok = await bcrypt.compare(password, user.hash);
+  if (!ok) return res.status(401).json({ ok: false, error: "Invalid" });
 
   const token = jwt.sign(
-    { uid: user._id, email },
+    { uid: user._id.toString(), email },
     process.env.JWT_SECRET!,
     { expiresIn: "7d" }
   );
 
-  res.json({ ok: true, token });
+  return res.json({ ok: true, token });
 });

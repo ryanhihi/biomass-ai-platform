@@ -34,3 +34,6 @@ recommend boolean
 imageFileId
 
 (optional) userId
+
+# Start the phone app demo
+npx expo start

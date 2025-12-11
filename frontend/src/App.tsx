@@ -135,7 +135,7 @@ export default function App() {
       {/* Predict mode */}
       {mode === "predict" && (
         <>
-          <p>
+          <p> 
             Upload or take a photo. On phone, this opens the camera.
           </p>
 

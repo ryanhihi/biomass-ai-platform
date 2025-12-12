@@ -1,0 +1,24 @@
+# Dockerfile.model
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# System deps for building wheels
+RUN apt-get update && apt-get install -y build-essential && rm -rf /var/lib/apt/lists/*
+
+# Copy model service + model files
+COPY model_service.py ./model_service.py
+COPY export ./export
+
+# Install Python deps
+# Let TF pick a compatible NumPy automatically
+RUN pip install --no-cache-dir \
+    "tensorflow-cpu==2.16.1" \
+    fastapi \
+    "uvicorn[standard]" \
+    pillow \
+    python-multipart
+
+EXPOSE 8001
+
+CMD ["uvicorn", "model_service:app", "--host", "0.0.0.0", "--port", "8001"]

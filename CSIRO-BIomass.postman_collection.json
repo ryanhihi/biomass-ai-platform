@@ -1,0 +1,166 @@
+{
+	"info": {
+		"_postman_id": "bbca3916-97ea-4036-8370-89b0b1cc1f2e",
+		"name": "CSIRO-BIomass",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "38658188"
+	},
+	"item": [
+		{
+			"name": "Register",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"email\": \"demon@demo.com\",\r\n    \"password\": \"demo123\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8000/auth/register",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"auth",
+						"register"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Login",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"email\": \"demon@demo.com\",\r\n    \"password\": \"demo123\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8000/auth/login",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"auth",
+						"login"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Predict",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiI2OTNiYjQ5YjM0MzM5OWU2ZTgzNTY5NzYiLCJpYXQiOjE3NjU1NTY3NjYsImV4cCI6MTc2NjE2MTU2Nn0.47JFN8XAprZFk2v56656VPjY1dHWaqeTRvf0LFNeUNY",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "image",
+							"type": "file",
+							"src": "postman-cloud:///1f0d723c-1121-43e0-acc7-428280aa892b"
+						}
+					]
+				},
+				"url": {
+					"raw": "http://localhost:8000/predict",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"predict"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "History",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiI2OTNiYjQ5YjM0MzM5OWU2ZTgzNTY5NzYiLCJpYXQiOjE3NjU1NTY3NjYsImV4cCI6MTc2NjE2MTU2Nn0.47JFN8XAprZFk2v56656VPjY1dHWaqeTRvf0LFNeUNY",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8000/history?limit=20&skip=0",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"history"
+					],
+					"query": [
+						{
+							"key": "limit",
+							"value": "20"
+						},
+						{
+							"key": "skip",
+							"value": "0"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Image Streaming",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8000/images/693c433e47aa6b218cba020a",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"images",
+						"693c433e47aa6b218cba020a"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

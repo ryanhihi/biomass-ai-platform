@@ -1,6 +1,7 @@
 import { Router } from "express";
 import mongoose from "mongoose";
-import { requireAuth, AuthedRequest } from "./requireAuth.js";
+import { requireAuth } from "./requireAuth.js";
+import type { AuthedRequest } from "./requireAuth.js";
 
 const PredictionSchema = new mongoose.Schema(
   {
@@ -16,7 +17,8 @@ const PredictionSchema = new mongoose.Schema(
 );
 
 const Prediction =
-  mongoose.models.Prediction || mongoose.model("Prediction", PredictionSchema);
+  mongoose.models.Prediction ||
+  mongoose.model("Prediction", PredictionSchema);
 
 export const history = Router();
 
@@ -28,11 +30,12 @@ history.get("/history", requireAuth, async (req: AuthedRequest, res) => {
   const limit = Math.min(Number(req.query.limit ?? 20), 100);
   const skip = Number(req.query.skip ?? 0);
 
-  const docs = await Prediction.find({ userId: req.userId })
+  const docs = await Prediction.find({ userId: req.userId } as any)
     .sort({ ts: -1 })
     .skip(skip)
     .limit(limit)
-    .lean();
+    .lean()
+    .exec();
 
   return res.json({ ok: true, items: docs });
 });

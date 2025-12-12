@@ -1,161 +1,174 @@
 import { Router } from "express";
 import multer from "multer";
-import * as tf from "@tensorflow/tfjs-node";
+import path from "path";
+import fs from "fs";
+import axios from "axios";
+import FormData from "form-data";
 import mongoose from "mongoose";
-import jwt from "jsonwebtoken";
+import { fileURLToPath } from "url";
+
+import { requireAuth } from "./requireAuth.js";
+import type { AuthedRequest } from "./requireAuth.js";
 import { getGridFS } from "./db.js";
 
-const upload = multer({ storage: multer.memoryStorage() });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-export const TARGETS = [
-  "Dry Clover (g)",
-  "Dry Dead (g)",
-  "Dry Green (g)",
-  "Dry Total (g)",
-  "Wet Total (g)",
-] as const;
-
-type Target = typeof TARGETS[number];
-
-let model: tf.LayersModel;
-
-export async function loadModel(modelPath: string) {
-  if (!modelPath) throw new Error("MODEL_PATH missing");
-  model = await tf.loadLayersModel("file://" + modelPath);
-  console.log("Model loaded sucessfully:", modelPath);
+// Ensure uploads dir exists
+const uploadDir = path.join(__dirname, "..", "uploads");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-const Prediction = mongoose.model(
-  "Prediction",
-  new mongoose.Schema(
-    {
-      userId: { type: mongoose.Schema.Types.ObjectId, required: false },
-      ts: { type: Date, default: Date.now },
-      outputs: { type: Object, required: true },
-      recommend: { type: Boolean, default: false },
-      imageFileId: { type: mongoose.Schema.Types.ObjectId, required: true },
-      originalName: String,
-      mimeType: String,
-    },
-    { collection: "predictions" }
-  )
+// model URL (Python FastAPI service)
+const MODEL_URL = process.env.MODEL_URL || "http://localhost:8001/predict";
+console.log("[predict] Using MODEL_URL =", MODEL_URL);
+
+//Multer disk storage (field name: "image"
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, uploadDir);
+  },
+  filename: (_req, file, cb) => {
+    const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, unique + path.extname(file.originalname));
+  },
+});
+
+const upload = multer({ storage });
+
+// Prediction schema (same as history.ts)
+const PredictionSchema = new mongoose.Schema(
+  {
+    userId: { type: mongoose.Schema.Types.ObjectId, required: false },
+    ts: { type: Date, default: Date.now },
+    outputs: Object,
+    recommend: Boolean,
+    imageFileId: mongoose.Schema.Types.ObjectId,
+    originalName: String,
+    mimeType: String,
+  },
+  { collection: "predictions" }
 );
 
-/**
- * If Keras model already contains preprocessing inside the graph,
- * set PREPROCESS_MODE=none
- *
- * If model expects EfficientNet preprocessed input,
- * set PREPROCESS_MODE=efficientnet
- */
-function preprocessIfNeeded(img: tf.Tensor3D) {
-  const mode = (process.env.PREPROCESS_MODE || "efficientnet").toLowerCase();
-  if (mode === "none") return img.toFloat();
-
-  // EfficientNet preprocess, scale to [-1, 1]
-  return img.toFloat().div(127.5).sub(1);
-}
-
-function getModelSize() {
-  const shape = model.inputs?.[0]?.shape;
-  // expected [null, H, W, C]
-  const h = (shape?.[1] as number) || 224;
-  const w = (shape?.[2] as number) || 224;
-  const c = (shape?.[3] as number) || 3;
-  return { h, w, c };
-}
-
-async function bufferToInputTensor(buf: Buffer) {
-  const { h, w } = getModelSize();
-
-  const decoded = tf.node.decodeImage(buf, 3) as tf.Tensor3D; // force RGB
-  const resized = tf.image.resizeBilinear(decoded, [h, w]);
-  const pre = preprocessIfNeeded(resized);
-  const batched = pre.expandDims(0); // (1,H,W,3)
-
-  decoded.dispose();
-  resized.dispose();
-
-  return batched;
-}
-
-function buildOutputs(y: number[]): Record<Target, number> {
-  const entries = TARGETS.map((label, i) => [label, y[i] ?? 0] as const);
-  return Object.fromEntries(entries) as Record<Target, number>;
-}
-
-/**
- * can adjust thresholds later in UI/admin settings.
- */
-function deriveRecommend(outputs: Record<Target, number>) {
-  const dryTotal = outputs["Dry Total (g)"] ?? 0;
-  const dryDead  = outputs["Dry Dead (g)"] ?? 0;
-
-  // Example rule (tune for use case)
-  return dryTotal >= 40 && dryDead <= 15;
-}
+const Prediction =
+  mongoose.models.Prediction ||
+  mongoose.model("Prediction", PredictionSchema);
 
 export const predict = Router();
 
-predict.post("/predict", upload.single("file"), async (req, res) => {
-  try {
+/**
+ * POST /predict
+ * Form-data: image=<file>
+ * Auth: Bearer token
+ */
+predict.post(
+  "/predict",
+  requireAuth,
+  upload.single("image"),
+  async (req: AuthedRequest, res) => {
     if (!req.file) {
-      return res.status(400).json({ ok: false, error: "image missing" });
+      return res
+        .status(400)
+        .json({ ok: false, error: "No image file provided" });
     }
 
-    // 1) tensor
-    const xImg = await bufferToInputTensor(req.file.buffer);
+    const imgPath = req.file.path;
 
-    // 2) predict
-    const pred = model.predict(xImg) as tf.Tensor;
-    const y = Array.from(await pred.data()) as number[];
+    try {
+      const bucket = getGridFS();
 
-    xImg.dispose();
-    pred.dispose();
+      // 1) Save image into GridFS
+      const uploadStream = bucket.openUploadStream(req.file.originalname, {
+        metadata: {
+          contentType: req.file.mimetype,
+          userId: req.userId?.toString(),
+        },
+      });
 
-    if (y.length < 5) {
-      throw new Error(`Model output too short: expected 5, got ${y.length}`);
-    }
+      await new Promise<void>((resolve, reject) => {
+        fs.createReadStream(imgPath)
+          .on("error", reject)
+          .pipe(uploadStream)
+          .on("error", reject)
+          .on("finish", () => resolve());
+      });
 
-    const outputs = buildOutputs(y);
-    const recommend = deriveRecommend(outputs);
+      const imageFileId = uploadStream.id as mongoose.Types.ObjectId;
 
-    // 3) store image in GridFS
-    const bucket = getGridFS();
-    const uploadStream = bucket.openUploadStream(req.file.originalname, {
-      metadata: { contentType: req.file.mimetype },
-    });
-    uploadStream.end(req.file.buffer);
-    const imageFileId = uploadStream.id as mongoose.Types.ObjectId;
+      // 2) Call Python model service with the same image
+      const form = new FormData();
+      form.append("image", fs.createReadStream(imgPath), {
+        filename: req.file.originalname,
+        contentType: req.file.mimetype,
+      });
 
-    // 4) userId from JWT
-    let userId: mongoose.Types.ObjectId | undefined;
-    const authHeader = req.headers.authorization;
+      const modelUrl =
+        process.env.MODEL_URL || "http://model:8001/predict";
 
-    if (authHeader?.startsWith("Bearer ")) {
-      const token = authHeader.split(" ")[1];
-      if (token) {
-        const decoded: any = jwt.verify(token, process.env.JWT_SECRET!);
-        userId = new mongoose.Types.ObjectId(decoded.uid);
+      const modelResp = await axios.post(modelUrl, form, {
+        headers: form.getHeaders(),
+        timeout: 30000,
+      });
+
+      const raw = modelResp.data;
+      const rawPreds: any = raw.predictions || raw.outputs || {};
+
+      // 3) Map predictions -> readable labels
+      const outputs: Record<string, number> = {
+        "Dry Clover (g)":
+          rawPreds.Dry_Clover_g ??
+          rawPreds["Dry Clover (g)"] ??
+          0,
+        "Dry Dead (g)":
+          rawPreds.Dry_Dead_g ??
+          rawPreds["Dry Dead (g)"] ??
+          0,
+        "Dry Green (g)":
+          rawPreds.Dry_Green_g ??
+          rawPreds["Dry Green (g)"] ??
+          0,
+        "Dry Total (g)":
+          rawPreds.Dry_Total_g ??
+          rawPreds["Dry Total (g)"] ??
+          0,
+        "Wet Total (g)":
+          rawPreds.GDM_g ??
+          rawPreds["Wet Total (g)"] ??
+          rawPreds["GDM_g"] ??
+          0,
+      };
+
+      const dryTotal = outputs["Dry Total (g)"] ?? 0;
+      const recommend = dryTotal < 100;
+
+      // 5) Save prediction document
+      await Prediction.create({
+        userId: req.userId ?? null,
+        ts: new Date(),
+        outputs,
+        recommend,
+        imageFileId,
+        originalName: req.file.originalname,
+        mimeType: req.file.mimetype,
+      });
+
+      // 6) Response to frontend
+      return res.json({
+        ok: true,
+        outputs,
+        recommend,
+        imageFileId,
+        originalName: req.file.originalname,
+      });
+    } catch (err) {
+      console.error("Predict route error:", err);
+      return res.status(500).json({ ok: false, error: "Prediction failed" });
+    } finally {
+      // Clean up temp file
+      if (req.file?.path) {
+        fs.unlink(req.file.path, () => {});
       }
     }
-
-    // 5) save prediction doc
-    const payload: any = {
-      outputs,
-      recommend,
-      imageFileId,
-      originalName: req.file.originalname,
-      mimeType: req.file.mimetype,
-    };
-    if (userId) payload.userId = userId;
-
-    await Prediction.create(payload);
-
-    return res.json({ ok: true, outputs, recommend, imageFileId });
-
-  } catch (e: any) {
-    console.error(e);
-    return res.status(500).json({ ok: false, error: e.message });
   }
-});
+);

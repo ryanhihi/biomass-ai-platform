@@ -1,18 +1,19 @@
-FROM node:20-bullseye-slim
+FROM node:20-alpine
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y \
-    python3 make g++ \
-  && rm -rf /var/lib/apt/lists/*
+# Install dependencies
+COPY package*.json tsconfig.json ./
+RUN npm install
 
-COPY package*.json ./
-RUN npm ci
-
-COPY tsconfig.json ./
+# Copy source
 COPY src ./src
 
+# Build TypeScript (assumes "build": "tsc")
 RUN npm run build
 
+# Expose the backend port
 EXPOSE 8000
-CMD ["node", "dist/server.js"]
+
+# Start server (assumes "start": "node dist/server.js")
+CMD ["npm", "run", "start"]

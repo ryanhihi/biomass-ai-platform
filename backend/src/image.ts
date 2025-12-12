@@ -13,12 +13,16 @@ images.get("/images/:id", async (req, res) => {
     const id = new mongoose.Types.ObjectId(req.params.id);
     const bucket = getGridFS();
 
-    // Try to read metadata to set content-type
-    const files = await bucket.find({ _id: id }).toArray();
-    const file = files[0];
+    // Read metadata to set content-type
+    const files = await bucket.find({ _id: id } as any).toArray();
+    const file = files[0] as any;
+
+    if (!file) {
+      return res.status(404).json({ ok: false, error: "Image not found" });
+    }
 
     const contentType =
-      (file?.metadata?.contentType as string) ||
+      file?.metadata?.contentType ||
       file?.contentType ||
       "application/octet-stream";
 

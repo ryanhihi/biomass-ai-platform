@@ -16,17 +16,29 @@ import { predict } from "./predict.js";
 
 //App setup
 const app = express();
+// just after `const app = express();`
+
+app.get("/", (_req, res) => {
+  res.send("Pasture-GURU backend is running");
+});
+
+app.get("/healthz", (_req, res) => {
+  res.json({ ok: true });
+});
 
 app.use(express.json());
-app.use(
-  cors({
-    origin: [
-      "http://localhost:5173",
-      "https://biomass-guru.onrender.com",   //frontend URL
-    ],
-    credentials: true,
-  })
-);
+// app.use(
+//   cors({
+//     origin: [
+//       "http://localhost:5173",
+//       "https://biomass-guru.onrender.com",   //frontend URL
+//     ],
+//     credentials: true,
+//   })
+// );
+app.use(cors());          // allow all origins, no credentials
+app.options("*", cors()); // handle preflight requests
+
 
 // store uploads under /backend/uploads
 const uploadDir = path.join(process.cwd(), "uploads");

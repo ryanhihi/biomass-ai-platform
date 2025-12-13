@@ -13,11 +13,10 @@ import { history } from "./history.js";
 import { images } from "./image.js";
 import { predict } from "./predict.js";
 
-
-//App setup
+// App setup
 const app = express();
-// just after `const app = express();`
 
+// Simple health / root routes
 app.get("/", (_req, res) => {
   res.send("Pasture-GURU backend is running");
 });
@@ -27,21 +26,24 @@ app.get("/healthz", (_req, res) => {
 });
 
 app.use(express.json());
-// app.use(
-//   cors({
-//     origin: [
-//       "http://localhost:5173",
-//       "https://biomass-guru.onrender.com",   //frontend URL
-//     ],
-//     credentials: true,
-//   })
-// );
-app.use(cors());          // allow all origins, no credentials
-app.options("*", cors()); // handle preflight requests
 
+// CORS – this is enough; remove app.options("*", cors())
+app.use(
+  cors({
+    origin: [
+      "http://localhost:5173",
+      "https://biomass-guru.onrender.com", // your frontend
+    ],
+  })
+);
 
 // store uploads under /backend/uploads
 const uploadDir = path.join(process.cwd(), "uploads");
+
+// make sure the folder exists (important on Render)
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadDir),
@@ -56,9 +58,12 @@ const upload = multer({ storage });
 async function forwardToPython(imagePath: string) {
   const formData = new FormData();
   formData.append("image", fs.createReadStream(imagePath));
- // Python FastAPI service URL (default: localhost:8001)
+
+  // Python FastAPI service URL
   const pythonUrl =
     process.env.MODEL_SERVICE_URL || "http://localhost:8001/predict";
+
+  console.log("[predict] Using MODEL_URL =", pythonUrl);
 
   const response = await axios.post(pythonUrl, formData, {
     headers: formData.getHeaders(),
@@ -66,8 +71,7 @@ async function forwardToPython(imagePath: string) {
     maxContentLength: Infinity,
   });
 
-  // response.data is: { predictions: { Dry_Green_g: ..., ... } }
-  return response.data;
+  return response.data; // { predictions: {...} }
 }
 
 // routers
@@ -76,10 +80,7 @@ app.use("/", history);
 app.use("/", images);
 app.use("/", predict);
 
-
-
 // Prediction endpoints
-// Both accept multipart/form-data with field name "image"
 app.post("/predict", upload.single("image"), async (req, res) => {
   try {
     if (!req.file) {
@@ -91,14 +92,13 @@ app.post("/predict", upload.single("image"), async (req, res) => {
 
     return res.json({
       imagePath,
-      ...pyData, // { predictions: {...} }
+      ...pyData,
     });
   } catch (err) {
     console.error("Prediction error at /predict:", err);
     return res.status(500).json({ error: "Prediction failed" });
   }
 });
-
 
 app.post("/api/predict", upload.single("image"), async (req, res) => {
   try {
@@ -119,8 +119,7 @@ app.post("/api/predict", upload.single("image"), async (req, res) => {
   }
 });
 
-//Boot
-
+// Boot
 const PORT = Number(process.env.PORT || 8000);
 
 async function boot() {

@@ -11,12 +11,33 @@ import { connectMongo } from "./db.js";
 import { auth } from "./auth.js";
 import { history } from "./history.js";
 import { images } from "./image.js";
-import { predict } from "./predict.js";
+import { predict as predictRouter } from "./predict.js";
 
 // App setup
 const app = express();
 
-// Simple health / root routes
+// CORS: allow frontend + localhost
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://biomass-guru.onrender.com",
+];
+
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      // allow non-browser requests (no origin) and allowed origins
+      if (!origin || allowedOrigins.includes(origin)) {
+        return cb(null, true);
+      }
+      return cb(new Error(`Origin ${origin} not allowed by CORS`));
+    },
+  })
+);
+
+// Body parser AFTER CORS
+app.use(express.json());
+
+// Simple health routes
 app.get("/", (_req, res) => {
   res.send("Pasture-GURU backend is running");
 });
@@ -24,18 +45,6 @@ app.get("/", (_req, res) => {
 app.get("/healthz", (_req, res) => {
   res.json({ ok: true });
 });
-
-app.use(express.json());
-
-// CORS – this is enough; remove app.options("*", cors())
-app.use(
-  cors({
-    origin: [
-      "http://localhost:5173",
-      "https://biomass-guru.onrender.com", // your frontend
-    ],
-  })
-);
 
 // store uploads under /backend/uploads
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -55,32 +64,33 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
+// Model service URL (FastAPI)
+const MODEL_URL =
+  process.env.MODEL_SERVICE_URL || "http://localhost:8001/predict";
+
+console.log("[predict] Using MODEL_URL =", MODEL_URL);
+
 async function forwardToPython(imagePath: string) {
   const formData = new FormData();
   formData.append("image", fs.createReadStream(imagePath));
 
-  // Python FastAPI service URL
-  const pythonUrl =
-    process.env.MODEL_SERVICE_URL || "http://localhost:8001/predict";
-
-  console.log("[predict] Using MODEL_URL =", pythonUrl);
-
-  const response = await axios.post(pythonUrl, formData, {
+  const response = await axios.post(MODEL_URL, formData, {
     headers: formData.getHeaders(),
     maxBodyLength: Infinity,
     maxContentLength: Infinity,
   });
 
-  return response.data; // { predictions: {...} }
+  // response.data is { predictions: { Dry_Green_g: ..., ... } }
+  return response.data;
 }
 
-// routers
+// Routers
 app.use("/auth", auth);
 app.use("/", history);
 app.use("/", images);
-app.use("/", predict);
+app.use("/", predictRouter);   // <<< use predictRouter, not predict
 
-// Prediction endpoints
+// Prediction endpoints (if you still want direct proxy)
 app.post("/predict", upload.single("image"), async (req, res) => {
   try {
     if (!req.file) {
@@ -92,7 +102,7 @@ app.post("/predict", upload.single("image"), async (req, res) => {
 
     return res.json({
       imagePath,
-      ...pyData,
+      ...pyData, // { predictions: {...} }
     });
   } catch (err) {
     console.error("Prediction error at /predict:", err);
@@ -100,6 +110,7 @@ app.post("/predict", upload.single("image"), async (req, res) => {
   }
 });
 
+// You can remove this if the frontend never uses /api/predict
 app.post("/api/predict", upload.single("image"), async (req, res) => {
   try {
     if (!req.file) {

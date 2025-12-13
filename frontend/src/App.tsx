@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import logo from "./assets/logo.png";
+import "./App.css";
 
 const TARGETS = [
   { label: "Dry Clover (g)", key: "Dry_Clover_g" },
@@ -21,10 +22,8 @@ type HistoryItem = {
 
 type PredictResponseBackend = {
   ok?: boolean;
-  // Some versions of the backend might return `outputs` keyed by label,
-  // others might return `predictions` keyed by snake_case.
-  outputs?: Record<string, number>;
-  predictions?: Record<string, number>;
+  outputs?: Record<string, number>;      // label-based keys
+  predictions?: Record<string, number>;  // snake_case keys
   recommend?: boolean;
   imageFileId?: string;
 };
@@ -65,7 +64,6 @@ export default function App() {
       if (!data.ok) {
         throw new Error(data.error || "Register failed");
       }
-      // Auto-login after register
       await login();
     } catch (err: any) {
       console.error("Register error:", err);
@@ -102,26 +100,21 @@ export default function App() {
 
     try {
       const form = new FormData();
-      // Backend expects field name "image"
-      form.append("image", file);
+      form.append("image", file); // backend expects "image"
 
-      // NOTE: backend route is /predict (no /api prefix)
       const { data } = await api.post<PredictResponseBackend>("/predict", form, {
         headers: {
           ...(authHeaders || {}),
-          // Let browser set boundary; axios will override if needed
         },
       });
 
-      // Choose outputs object: prefer data.outputs, fallback to data.predictions
       const rawOutputs: Record<string, number> =
         (data.outputs as any) || (data.predictions as any) || {};
 
-      // Map to UI labels, supporting both label-keys and snake_case keys
       const mapped: Record<string, number> = {};
       TARGETS.forEach((t) => {
-        const byLabel = rawOutputs[t.label]; // e.g. "Dry Clover (g)"
-        const byKey = rawOutputs[t.key]; // e.g. "Dry_Clover_g"
+        const byLabel = rawOutputs[t.label];
+        const byKey = rawOutputs[t.key];
         const value =
           typeof byLabel === "number"
             ? byLabel
@@ -165,184 +158,240 @@ export default function App() {
   }, [mode, token]);
 
   return (
-    <div
-      style={{
-        padding: 24,
-        fontFamily: "system-ui, sans-serif",
-        maxWidth: 820,
-      }}
-    >
-      
+    <div className="app-root">
+      <div className="app-shell">
+        {/* LEFT / HERO SIDE */}
+        <aside className="hero-pane">
+          <div className="hero-logo-wrap">
+            <img src={logo} alt="Pasture-GURU logo" className="hero-logo" />
+          </div>
+          <h1 className="hero-title">Pasture-GURU Biomass App</h1>
+          <p className="hero-tagline">
+            Image-only pasture biomass estimates in the field, powered by deep
+            learning.
+          </p>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-        <img
-          src={logo}
-          alt="Biomass App logo"
-          style={{ width: 56, height: 56, borderRadius: 12 }}
-        />
-        <h2>🌱 Pature-GURU Biomass App </h2>
-      </div>
+          <ul className="hero-bullets">
+            <li>Upload or snap a plot photo</li>
+            <li>Model returns 5 biomass targets in grams</li>
+            <li>Simple recommendation flag for quick decisions</li>
+          </ul>
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        <button onClick={() => setMode("predict")}>Predict</button>
-        <button onClick={() => setMode("history")} disabled={!token}>
-          History
-        </button>
-      </div>
+          <div className="hero-footnote">
+            Backed by a student-distilled EfficientNet model trained on CSIRO
+            Biomass data.
+          </div>
+        </aside>
 
-      {/* Auth block */}
-      <div
-        style={{
-          border: "1px solid #ddd",
-          padding: 12,
-          borderRadius: 8,
-          marginBottom: 16,
-        }}
-      >
-        {!token ? (
-          <>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <input
-                placeholder="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-              <input
-                placeholder="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-              <button onClick={login}>Login</button>
-              <button onClick={register}>Register</button>
+        {/* RIGHT / INTERACTIVE SIDE */}
+        <main className="main-pane">
+          {/* Brand row (for narrow screens) */}
+          <header className="brand-row">
+            <div className="brand-left">
+              <img src={logo} alt="Pasture-GURU logo" className="brand-logo" />
+              <div>
+                <h2 className="brand-title">Pasture-GURU Biomass App</h2>
+                <p className="brand-subtitle">
+                  Field-side prediction & decision support
+                </p>
+              </div>
             </div>
-            {authError && (
-              <div style={{ color: "crimson", marginTop: 8 }}>
-                Auth error: {authError}
+
+            <div className="mode-toggle">
+              <button
+                className={`mode-btn ${
+                  mode === "predict" ? "mode-btn--active" : ""
+                }`}
+                onClick={() => setMode("predict")}
+              >
+                Predict
+              </button>
+              <button
+                className={`mode-btn ${
+                  mode === "history" ? "mode-btn--active" : ""
+                }`}
+                onClick={() => setMode("history")}
+                disabled={!token}
+              >
+                History
+              </button>
+            </div>
+          </header>
+
+          {/* Auth card */}
+          <section className="card auth-card">
+            {!token ? (
+              <>
+                <div className="auth-row">
+                  <input
+                    className="field-input"
+                    placeholder="Email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                  <input
+                    className="field-input"
+                    placeholder="Password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                  <button className="btn btn-primary" onClick={login}>
+                    Login
+                  </button>
+                  <button className="btn btn-ghost" onClick={register}>
+                    Register
+                  </button>
+                </div>
+                {authError && (
+                  <div className="msg msg-error">
+                    Auth error: {authError}
+                  </div>
+                )}
+                <small className="hint">
+                  Tip: use <code>demo@demo.com</code> /{" "}
+                  <code>demo123</code> for testing.
+                </small>
+              </>
+            ) : (
+              <div className="auth-logged-in">
+                <span>✅ Logged in as {email}</span>
+                <button className="btn btn-ghost" onClick={logout}>
+                  Logout
+                </button>
               </div>
             )}
-            <small>Tip: use demo@demo.com / demo123 for testing.</small>
-          </>
-        ) : (
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <span>✅ Logged in as {email}</span>
-            <button onClick={logout}>Logout</button>
-          </div>
-        )}
-      </div>
+          </section>
 
-      {/* Predict mode */}
-      {mode === "predict" && (
-        <>
-          <p>Upload or take a photo. On phone, this opens the camera.</p>
+          {/* Main content card */}
+          <section className="card main-card">
+            {mode === "predict" ? (
+              <>
+                <h3 className="card-title">Capture & predict</h3>
+                <p className="card-subtitle">
+                  Upload a pasture image or use your phone camera. The model
+                  estimates biomass per plot.
+                </p>
 
-          <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          />
-
-          {file && (
-            <div style={{ marginTop: 12 }}>
-              <img
-                src={URL.createObjectURL(file)}
-                alt="preview"
-                style={{ width: "100%", maxWidth: 420, borderRadius: 8 }}
-              />
-            </div>
-          )}
-
-          <div style={{ marginTop: 12 }}>
-            <button onClick={predict} disabled={!file || loading}>
-              {loading ? "Predicting..." : "Predict"}
-            </button>
-          </div>
-
-          {predictError && (
-            <div style={{ marginTop: 16, color: "crimson" }}>
-              Error: {predictError}
-            </div>
-          )}
-
-          {result && (
-            <div style={{ marginTop: 16 }}>
-              <h3>Results</h3>
-              {result.recommend !== null && (
-                <div style={{ marginBottom: 8 }}>
-                  <strong>Recommendation:</strong>{" "}
-                  {result.recommend ? "✅ Recommend" : "❌ Not recommend"}
-                </div>
-              )}
-              <ul>
-                {TARGETS.map((t) => (
-                  <li key={t.label}>
-                    <strong>{t.label}:</strong>{" "}
-                    {Number(result.outputs[t.label] ?? 0).toFixed(2)} g
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* History mode */}
-      {mode === "history" && (
-        <>
-          {historyLoading && <div>Loading history...</div>}
-
-          {!historyLoading && history.length === 0 && (
-            <div>No history yet.</div>
-          )}
-
-          <div style={{ display: "grid", gap: 12 }}>
-            {history.map((item) => (
-              <div
-                key={item._id}
-                style={{
-                  border: "1px solid #ddd",
-                  borderRadius: 8,
-                  padding: 12,
-                }}
-              >
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                  <img
-                    src={`${api.defaults.baseURL}/images/${item.imageFileId}`}
-                    alt="history"
-                    style={{ width: 180, borderRadius: 6 }}
+                <div className="file-picker">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                   />
-                  <div>
-                    <div>
-                      <strong>Date:</strong>{" "}
-                      {new Date(item.ts).toLocaleString()}
-                    </div>
-                    <div>
-                      <strong>Recommendation:</strong>{" "}
-                      {item.recommend ? "✅ Recommend" : "❌ Not recommend"}
-                    </div>
+                </div>
 
-                    <ul>
-                      {TARGETS.map((t) => {
-                        const val =
-                          item.outputs?.[t.label] ??
-                          item.outputs?.[t.key] ??
-                          0;
-                        return (
-                          <li key={t.label}>
-                            <strong>{t.label}:</strong>{" "}
-                            {Number(val).toFixed(2)} g
-                          </li>
-                        );
-                      })}
+                {file && (
+                  <div className="preview-wrap">
+                    <img
+                      src={URL.createObjectURL(file)}
+                      alt="preview"
+                      className="preview-image"
+                    />
+                    <div className="preview-meta">
+                      <div className="preview-name">{file.name}</div>
+                      <div className="preview-size">
+                        {(file.size / 1024 / 1024).toFixed(2)} MB
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="actions-row">
+                  <button
+                    className="btn btn-primary"
+                    onClick={predict}
+                    disabled={!file || loading}
+                  >
+                    {loading ? "Predicting…" : "Run prediction"}
+                  </button>
+                </div>
+
+                {predictError && (
+                  <div className="msg msg-error">
+                    Error: {predictError}
+                  </div>
+                )}
+
+                {result && (
+                  <div className="results-block">
+                    {result.recommend !== null && (
+                      <div className="recommend-badge">
+                        {result.recommend ? "✅ Recommend" : "❌ Not recommend"}
+                      </div>
+                    )}
+                    <ul className="results-list">
+                      {TARGETS.map((t) => (
+                        <li key={t.label}>
+                          <span className="result-label">{t.label}</span>
+                          <span className="result-value">
+                            {Number(result.outputs[t.label] ?? 0).toFixed(2)} g
+                          </span>
+                        </li>
+                      ))}
                     </ul>
                   </div>
+                )}
+              </>
+            ) : (
+              <>
+                <h3 className="card-title">Recent field runs</h3>
+
+                {historyLoading && <div>Loading history…</div>}
+
+                {!historyLoading && history.length === 0 && (
+                  <div className="msg msg-muted">No history yet.</div>
+                )}
+
+                <div className="history-grid">
+                  {history.map((item) => (
+                    <div key={item._id} className="history-card">
+                      <div className="history-main">
+                        <img
+                          src={`${api.defaults.baseURL}/images/${item.imageFileId}`}
+                          alt="history"
+                          className="history-image"
+                        />
+                        <div className="history-body">
+                          <div className="history-row">
+                            <span className="history-date">
+                              {new Date(item.ts).toLocaleString()}
+                            </span>
+                            <span className="history-pill">
+                              {item.recommend
+                                ? "✅ Recommend"
+                                : "❌ Not recommend"}
+                            </span>
+                          </div>
+                          <ul className="results-list compact">
+                            {TARGETS.map((t) => {
+                              const val =
+                                item.outputs?.[t.label] ??
+                                item.outputs?.[t.key] ??
+                                0;
+                              return (
+                                <li key={t.label}>
+                                  <span className="result-label">
+                                    {t.label}
+                                  </span>
+                                  <span className="result-value">
+                                    {Number(val).toFixed(2)} g
+                                  </span>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
+              </>
+            )}
+          </section>
+        </main>
+      </div>
     </div>
   );
 }

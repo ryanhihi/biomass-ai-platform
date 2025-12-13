@@ -20,7 +20,10 @@ const app = express();
 app.use(express.json());
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || "*",
+    origin: [
+      "http://localhost:5173",
+      "https://biomass-guru.onrender.com",   //frontend URL
+    ],
     credentials: true,
   })
 );

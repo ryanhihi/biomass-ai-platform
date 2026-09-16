@@ -1,4 +1,7 @@
-# biomass_pred
+# Biomass Prediction
+<img width="685" height="544" alt="5IUjG_srkKxkxKJ4AXG_m7tHPJr2i6_Xs3typ6f42H0QXrutVHL-p6OSk8Uiw67-33nxxTjaO9kgVAbrA3XmO6KLQR2KPcxMHEgNkEj67Bh4cdREMz11Yf6gozpUP82qbx7l7iYvZiOd9Huy4d7pfItDpEmOFZVr58_yOAYxRkng_6m9teYYw_MxXPjb3ZtR" src="https://github.com/user-attachments/assets/ea54b440-a888-4b63-a073-de526bb97ac9" />
+
+
 
 End-to-end biomass prediction system built around the CSIRO Pasture Biomass dataset.  
 It includes:
